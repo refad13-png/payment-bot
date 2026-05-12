@@ -1,0 +1,157 @@
+const express = require('express');
+const path = require('path');
+const crypto = require('crypto');
+const { Telegraf } = require('telegraf');
+
+const BOT_TOKEN = '8689775862:AAGZYQsoABr76IQgJCRnL-RiFQ6Ws8cRDog';
+const PORT = process.env.PORT || 3000;
+const WEB_APP_URL = process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000';
+const ADMIN_PASSWORD = 'admin123';
+
+console.log('WEB_APP_URL:', WEB_APP_URL);
+
+const app = express();
+const bot = new Telegraf(BOT_TOKEN);
+
+app.use(express.json());
+app.use(express.static(__dirname));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+const products = [
+  { id: 1, name: 'Basic', price: 990, period: 'mes', emoji: '🌟' },
+  { id: 2, name: 'Pro', price: 2490, period: 'mes', emoji: '⚡' },
+  { id: 3, name: 'Premium', price: 4990, period: 'mes', emoji: '💎' },
+];
+
+const orders = [];
+
+app.get('/api/products', (req, res) => {
+  res.json(products);
+});
+
+app.post('/api/pay', (req, res) => {
+  const { productId, cardNumber, cardExpiry, cardCvc, cardHolder, email, telegramId } = req.body;
+
+  const errors = [];
+  const product = products.find(p => p.id === productId);
+
+  if (!product) errors.push('Product not found');
+  if (!cardNumber || !/^\d{16}$/.test(cardNumber.replace(/\s/g, ''))) errors.push('Card number: 16 digits');
+  if (!cardExpiry || !/^(0[1-9]|1[0-2])\/\d{2}$/.test(cardExpiry)) errors.push('Expiry: MM/YY');
+  if (!cardCvc || !/^\d{3,4}$/.test(cardCvc)) errors.push('CVC: 3-4 digits');
+  if (!cardHolder || cardHolder.trim().length < 3) errors.push('Cardholder name required');
+  if (!email || !email.includes('@')) errors.push('Invalid email');
+
+  if (errors.length > 0) {
+    return res.status(400).json({ success: false, errors });
+  }
+
+  const transactionId = 'txn_' + crypto.randomBytes(6).toString('hex');
+  const maskedCard = '**** ' + cardNumber.replace(/\s/g, '').slice(-4);
+
+  const order = {
+    id: orders.length + 1,
+    transactionId,
+    product: product.name,
+    amount: product.price,
+    currency: 'RUB',
+    cardMasked: maskedCard,
+    cardHolder,
+    email,
+    telegramId: telegramId || null,
+    status: 'paid',
+    createdAt: new Date().toISOString(),
+  };
+
+  orders.push(order);
+
+  setTimeout(() => {
+    res.json({
+      success: true,
+      transactionId,
+      amount: product.price,
+      productName: product.name,
+      maskedCard,
+      message: `Payment ${product.price} RUB successful!`,
+    });
+
+    if (telegramId) {
+      bot.telegram.sendMessage(
+        telegramId,
+        `✅ *Payment successful!*\n\nProduct: ${product.emoji} ${product.name}\nAmount: ${product.price} RUB\nCard: ${maskedCard}\nTransaction: \`${transactionId}\`\n\nThank you!`,
+        { parse_mode: 'Markdown' }
+      ).catch(() => {});
+    }
+  }, 1500);
+});
+
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  if (password === ADMIN_PASSWORD) {
+    res.json({ success: true, token: 'admin_authenticated' });
+  } else {
+    res.status(401).json({ success: false, error: 'Wrong password' });
+  }
+});
+
+app.get('/api/admin/orders', (req, res) => {
+  const auth = req.headers.authorization;
+  if (auth !== 'Bearer admin_authenticated') {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const summary = {
+    totalOrders: orders.length,
+    totalRevenue: orders.reduce((sum, o) => sum + o.amount, 0),
+    orders: orders.slice().reverse(),
+  };
+
+  res.json(summary);
+});
+
+bot.start(async (ctx) => {
+  const firstName = ctx.from.first_name || 'User';
+  await ctx.reply(
+    `Hello, *${firstName}*!\n\nWelcome to the subscription store.\nChoose a plan and pay directly in Telegram.`,
+    {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Open payment form', web_app: { url: WEB_APP_URL } }],
+          [{ text: 'About', callback_data: 'about' }],
+        ],
+      },
+    }
+  );
+});
+
+bot.action('about', async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply(
+    `*Payment Bot*\n\nAccepts payments via Telegram Web App.\nCard data is not stored.\n\nPlans:\n` +
+    products.map(p => `${p.emoji} *${p.name}* - ${p.price} RUB/mo`).join('\n'),
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('help', (ctx) => {
+  ctx.reply('Press /start to open the payment menu.');
+});
+
+app.listen(PORT, () => {
+  console.log(`Server: http://localhost:${PORT}`);
+});
+
+bot.launch({ dropPendingUpdates: true }, () => {
+  console.log('Bot started');
+});
+
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
