@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Оплата подписки</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg: var(--tg-theme-bg-color, #0f172a);
+            --text: var(--tg-theme-text-color, #e2e8f0);
+            --hint: var(--tg-theme-hint-color, #94a3b8);
+            --button: var(--tg-theme-button-color, #38bdf8);
+            --button-text: var(--tg-theme-button-text-color, #0f172a);
+            --secondary-bg: var(--tg-theme-secondary-bg-color, #1e293b);
+            --danger: #f87171;
+            --success: #4ade80;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container { max-width: 420px; margin: 0 auto; }
+
+        h1 {
+            font-size: 1.5rem;
+            text-align: center;
+            margin-bottom: 6px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: var(--hint);
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+
+        /* Тарифы */
+        .tariffs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+        .tariff-option input { display: none; }
+
+        .tariff-option label {
+            display: flex; align-items: center; gap: 14px;
+            padding: 16px; background: var(--secondary-bg);
+            border: 2px solid transparent; border-radius: 16px;
+            cursor: pointer; transition: 0.2s;
+        }
+
+        .tariff-option input:checked + label {
+            border-color: var(--button);
+            background: rgba(56,189,248,0.08);
+        }
+
+        .tariff-emoji { font-size: 2rem; }
+        .tariff-info { flex: 1; }
+        .tariff-name { font-weight: 700; font-size: 1rem; }
+        .tariff-price { font-size: 1.3rem; font-weight: 800; color: var(--button); }
+        .tariff-period { font-size: 0.8rem; color: var(--hint); }
+
+        /* Поля */
+        .form-group { margin-bottom: 14px; }
+        .form-label {
+            display: block; font-size: 0.8rem; color: var(--hint);
+            margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+
+        .form-input {
+            width: 100%; padding: 14px; background: var(--secondary-bg);
+            border: 2px solid transparent; border-radius: 12px;
+            color: var(--text); font-size: 1rem; outline: none; transition: 0.2s;
+        }
+
+        .form-input:focus { border-color: var(--button); }
+        .form-input.error { border-color: var(--danger); }
+
+        .row { display: flex; gap: 10px; }
+        .row > * { flex: 1; }
+
+        .pay-btn {
+            width: 100%; padding: 16px; background: var(--button);
+            color: var(--button-text); font-weight: 700; font-size: 1.1rem;
+            border: none; border-radius: 14px; cursor: pointer; transition: 0.2s;
+            margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+
+        .pay-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .pay-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .spinner {
+            display: none; width: 20px; height: 20px;
+            border: 3px solid var(--button-text); border-top-color: transparent;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .pay-btn.loading .spinner { display: inline-block; }
+        .pay-btn.loading .btn-text { display: none; }
+
+        /* Сообщение */
+        .message {
+            margin-top: 16px; padding: 14px; border-radius: 12px;
+            font-size: 0.9rem; display: none;
+        }
+
+        .message.show { display: block; }
+        .message.error { background: rgba(248,113,113,0.1); color: var(--danger); border: 1px solid rgba(248,113,113,0.3); }
+
+        /* Успешная оплата */
+        .success-block {
+            display: none; text-align: center; padding: 30px 10px;
+        }
+
+        .success-block.show { display: block; }
+
+        .success-icon {
+            width: 80px; height: 80px; background: rgba(74,222,128,0.15);
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 20px; font-size: 3rem;
+        }
+
+        .success-title { font-size: 1.4rem; font-weight: 800; margin-bottom: 8px; color: var(--success); }
+        .success-amount { font-size: 2rem; font-weight: 800; color: var(--button); margin-bottom: 4px; }
+        .success-tariff { font-size: 1rem; color: var(--hint); margin-bottom: 20px; }
+
+        .success-details {
+            background: var(--secondary-bg); border-radius: 14px;
+            padding: 16px; text-align: left; margin-bottom: 24px;
+        }
+
+        .success-detail-row {
+            display: flex; justify-content: space-between; padding: 8px 0;
+            border-bottom: 1px solid rgba(148,163,184,0.1); font-size: 0.9rem;
+        }
+        .success-detail-row:last-child { border-bottom: none; }
+        .success-detail-label { color: var(--hint); }
+        .success-detail-value { font-weight: 600; }
+
+        .secure-badge {
+            display: flex; align-items: center; gap: 8px;
+            color: var(--hint); font-size: 0.8rem; justify-content: center;
+            margin-top: 16px;
+        }
+
+        /* Скрытие */
+        .hidden { display: none !important; }
+
+        @media (max-width: 480px) {
+            body { padding: 12px; }
+            .tariff-option label { padding: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <!-- ===== ФОРМА ОПЛАТЫ ===== -->
+        <div id="paymentSection">
+            <h1>💳 Оплата подписки</h1>
+            <p class="subtitle">Выберите тариф и заполните данные карты</p>
+
+            <form id="paymentForm">
+                <div class="tariffs" id="tariffsContainer"></div>
+
+                <div class="form-group">
+                    <label class="form-label">Email для чека</label>
+                    <input type="email" class="form-input" id="email" placeholder="you@example.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Номер карты</label>
+                    <input type="text" class="form-input" id="cardNumber" placeholder="0000 0000 0000 0000" maxlength="19" required>
+                </div>
+
+                <div class="row">
+                    <div class="form-group">
+                        <label class="form-label">Срок (ММ/ГГ)</label>
+                        <input type="text" class="form-input" id="cardExpiry" placeholder="ММ/ГГ" maxlength="5" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">CVC</label>
+                        <input type="text" class="form-input" id="cardCvc" placeholder="123" maxlength="4" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Имя держателя</label>
+                    <input type="text" class="form-input" id="cardHolder" placeholder="IVAN IVANOV" required>
+                </div>
+
+                <button type="submit" class="pay-btn" id="payBtn">
+                    <span class="spinner"></span>
+                    <span class="btn-text">Оплатить <span id="totalAmount">0</span> ₽</span>
+                </button>
+            </form>
+
+            <div id="messageBox" class="message"></div>
+            <div class="secure-badge">🔒 Платёж защищён • Данные не сохраняются</div>
+        </div>
+
+        <!-- ===== УСПЕШНАЯ ОПЛАТА ===== -->
+        <div id="successSection" class="success-block">
+            <div class="success-icon">✅</div>
+            <div class="success-title">Оплата прошла успешно!</div>
+            <div class="success-amount" id="successAmount">0 ₽</div>
+            <div class="success-tariff" id="successTariff">Тариф: —</div>
+
+            <div class="success-details">
+                <div class="success-detail-row">
+                    <span class="success-detail-label">💳 Карта</span>
+                    <span class="success-detail-value" id="successCard">—</span>
+                </div>
+                <div class="success-detail-row">
+                    <span class="success-detail-label">🆔 Транзакция</span>
+                    <span class="success-detail-value" id="successTxn">—</span>
+                </div>
+                <div class="success-detail-row">
+                    <span class="success-detail-label">📧 Чек отправлен на</span>
+                    <span class="success-detail-value" id="successEmail">—</span>
+                </div>
+            </div>
+
+            <div class="secure-badge">🔒 Платёж защищён • Данные не сохраняются</div>
+        </div>
+
+    </div>
+
+    <script>
+        // Telegram Web App
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.ready();
+            tg.expand();
+            tg.MainButton.hide();
+        }
+
+        const paymentSection = document.getElementById('paymentSection');
+        const successSection = document.getElementById('successSection');
+        const paymentForm = document.getElementById('paymentForm');
+        const payBtn = document.getElementById('payBtn');
+        const messageBox = document.getElementById('messageBox');
+        const totalAmountEl = document.getElementById('totalAmount');
+
+        let products = [];
+
+        // Загрузка тарифов
+        async function loadProducts() {
+            try {
+                const res = await fetch('/api/products');
+                products = await res.json();
+                renderTariffs(products);
+                updateTotal();
+            } catch (e) {
+                showMessage('Ошибка загрузки тарифов', 'error');
+            }
+        }
+
+        function renderTariffs(products) {
+            const container = document.getElementById('tariffsContainer');
+            container.innerHTML = products.map((p, i) => `
+                <div class="tariff-option">
+                    <input type="radio" name="productId" value="${p.id}" id="tariff${p.id}" ${i === 0 ? 'checked' : ''}>
+                    <label for="tariff${p.id}">
+                        <span class="tariff-emoji">${p.emoji}</span>
+                        <span class="tariff-info">
+                            <div class="tariff-name">${p.name}</div>
+                            <div class="tariff-period">/ ${p.period}</div>
+                        </span>
+                        <span class="tariff-price">${p.price} ₽</span>
+                    </label>
+                </div>
+            `).join('');
+
+            document.querySelectorAll('input[name="productId"]').forEach(radio => {
+                radio.addEventListener('change', updateTotal);
+            });
+        }
+
+        function updateTotal() {
+            const selected = document.querySelector('input[name="productId"]:checked');
+            if (!selected) return;
+            const product = products.find(p => p.id === parseInt(selected.value));
+            if (product) totalAmountEl.textContent = product.price;
+        }
+
+        // Маски ввода
+        document.getElementById('cardNumber').addEventListener('input', function(e) {
+            let val = e.target.value.replace(/\s/g, '').replace(/\D/g, '');
+            val = val.slice(0, 16);
+            e.target.value = val.replace(/(.{4})/g, '$1 ').trim();
+        });
+
+        document.getElementById('cardExpiry').addEventListener('input', function(e) {
+            let val = e.target.value.replace(/\D/g, '');
+            if (val.length >= 2) val = val.slice(0, 2) + '/' + val.slice(2, 4);
+            e.target.value = val.slice(0, 5);
+        });
+
+        // Сообщение
+        function showMessage(text, type) {
+            messageBox.textContent = text;
+            messageBox.className = 'message show ' + type;
+        }
+
+        function hideMessage() {
+            messageBox.className = 'message';
+        }
+
+        // Показ успеха
+        function showSuccess(data) {
+            paymentSection.classList.add('hidden');
+            successSection.classList.add('show');
+            document.getElementById('successAmount').textContent = data.amount + ' ₽';
+            document.getElementById('successTariff').textContent = 'Тариф: ' + data.productName;
+            document.getElementById('successCard').textContent = data.maskedCard;
+            document.getElementById('successTxn').textContent = data.transactionId;
+            document.getElementById('successEmail').textContent = document.getElementById('email').value;
+        }
+
+        // Отправка
+        paymentForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessage();
+
+            const productId = parseInt(document.querySelector('input[name="productId"]:checked')?.value);
+            const cardNumber = document.getElementById('cardNumber').value.replace(/\s/g, '');
+            const cardExpiry = document.getElementById('cardExpiry').value;
+            const cardCvc = document.getElementById('cardCvc').value;
+            const cardHolder = document.getElementById('cardHolder').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const telegramId = tg?.initDataUnsafe?.user?.id || null;
+
+            payBtn.classList.add('loading');
+            payBtn.disabled = true;
+
+            try {
+                const res = await fetch('/api/pay', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ productId, cardNumber, cardExpiry, cardCvc, cardHolder, email, telegramId })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    showSuccess(data);
+                } else {
+                    const errorText = data.errors ? data.errors.join('\n') : 'Ошибка оплаты';
+                    showMessage('❌ ' + errorText, 'error');
+                }
+            } catch (err) {
+                showMessage('❌ Сервер недоступен. Попробуйте позже.', 'error');
+            } finally {
+                payBtn.classList.remove('loading');
+                payBtn.disabled = false;
+            }
+        });
+
+        // Старт
+        loadProducts();
+    </script>
+</body>
+</html>
