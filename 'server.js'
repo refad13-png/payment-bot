@@ -151,8 +151,9 @@ bot.command('help', (ctx) => {
 app.listen(PORT, () => {
   console.log(`Server: http://localhost:${PORT}`);
 });
-
-bot.launch(() => {
+bot.launch({
+  dropPendingUpdates: true
+}, () => {
   console.log('Bot started');
 });
 
