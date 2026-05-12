@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+        /* Экран входа */
+        .login-screen {
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh; padding: 20px;
+        }
+
+        .login-card {
+            background: #1e293b; padding: 40px 30px; border-radius: 20px;
+            text-align: center; max-width: 380px; width: 100%;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+
+        .login-card h1 { font-size: 1.6rem; margin-bottom: 6px; }
+        .login-card p { color: #94a3b8; margin-bottom: 24px; font-size: 0.9rem; }
+
+        .login-card input {
+            width: 100%; padding: 14px; background: #0f172a; border: 2px solid #334155;
+            border-radius: 12px; color: #e2e8f0; font-size: 1rem; text-align: center;
+            outline: none; transition: 0.2s; margin-bottom: 14px;
+        }
+        .login-card input:focus { border-color: #38bdf8; }
+
+        .login-card button {
+            width: 100%; padding: 14px; background: #38bdf8; color: #0f172a;
+            font-weight: 700; font-size: 1rem; border: none; border-radius: 12px;
+            cursor: pointer; transition: 0.2s;
+        }
+        .login-card button:hover { background: #7dd3fc; }
+
+        .login-error { color: #f87171; margin-top: 12px; font-size: 0.85rem; display: none; }
+        .login-error.show { display: block; }
+
+        /* Панель */
+        .panel { display: none; max-width: 900px; margin: 0 auto; padding: 30px 20px; }
+
+        .header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 30px; flex-wrap: wrap; gap: 12px;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #38bdf8, #a78bfa);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+
+        .logout-btn {
+            padding: 10px 20px; background: #334155; color: #e2e8f0;
+            border: none; border-radius: 10px; cursor: pointer; font-size: 0.9rem;
+        }
+        .logout-btn:hover { background: #475569; }
+
+        .stats {
+            display: flex; gap: 16px; margin-bottom: 28px; flex-wrap: wrap;
+        }
+
+        .stat-card {
+            flex: 1; min-width: 150px; background: #1e293b;
+            padding: 20px; border-radius: 16px; text-align: center;
+        }
+
+        .stat-value { font-size: 1.8rem; font-weight: 800; color: #38bdf8; }
+        .stat-label { font-size: 0.85rem; color: #94a3b8; margin-top: 4px; }
+
+        .table-wrapper {
+            background: #1e293b; border-radius: 16px; overflow-x: auto;
+        }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th { background: #334155; padding: 14px; text-align: left; font-weight: 700; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { padding: 12px 14px; border-bottom: 1px solid #334155; }
+
+        .amount { font-weight: 700; color: #4ade80; }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; }
+        .badge-paid { background: rgba(74,222,128,0.15); color: #4ade80; }
+
+        .empty { text-align: center; padding: 40px; color: #64748b; }
+
+        @media (max-width: 600px) {
+            .stats { flex-direction: column; }
+            th, td { padding: 10px 8px; font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ЭКРАН ВХОДА -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-card">
+            <h1>🔐 Админ-панель</h1>
+            <p>Введите пароль для входа</p>
+            <input type="password" id="passwordInput" placeholder="Пароль" autofocus>
+            <button onclick="login()">Войти</button>
+            <div class="login-error" id="loginError">Неверный пароль</div>
+        </div>
+    </div>
+
+    <!-- ПАНЕЛЬ -->
+    <div class="panel" id="panel">
+        <div class="header">
+            <h1>📊 Админ-панель</h1>
+            <button class="logout-btn" onclick="logout()">🚪 Выйти</button>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalOrders">0</div>
+                <div class="stat-label">Всего заказов</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalRevenue">0 ₽</div>
+                <div class="stat-label">Выручка</div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Тариф</th>
+                        <th>Сумма</th>
+                        <th>Карта</th>
+                        <th>Email</th>
+                        <th>Статус</th>
+                        <th>Дата</th>
+                    </tr>
+                </thead>
+                <tbody id="ordersTable"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const API = window.location.origin;
+
+        function login() {
+            const password = document.getElementById('passwordInput').value;
+            const errorEl = document.getElementById('loginError');
+
+            fetch(`${API}/api/admin/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    localStorage.setItem('admin_token', data.token);
+                    showPanel();
+                } else {
+                    errorEl.classList.add('show');
+                }
+            })
+            .catch(() => {
+                errorEl.textContent = 'Ошибка соединения';
+                errorEl.classList.add('show');
+            });
+        }
+
+        function logout() {
+            localStorage.removeItem('admin_token');
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('panel').style.display = 'none';
+            document.getElementById('passwordInput').value = '';
+        }
+
+        function showPanel() {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('panel').style.display = 'block';
+            document.getElementById('loginError').classList.remove('show');
+            loadOrders();
+        }
+
+        function loadOrders() {
+            const token = localStorage.getItem('admin_token');
+            if (!token) return;
+
+            fetch(`${API}/api/admin/orders`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(r => {
+                if (r.status === 401) { logout(); return; }
+                return r.json();
+            })
+            .then(data => {
+                if (!data) return;
+                document.getElementById('totalOrders').textContent = data.totalOrders;
+                document.getElementById('totalRevenue').textContent = data.totalRevenue.toLocaleString() + ' ₽';
+
+                const tbody = document.getElementById('ordersTable');
+                if (data.orders.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty">Нет заказов</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.orders.map(o => `
+                    <tr>
+                        <td>#${o.id}</td>
+                        <td>${o.product}</td>
+                        <td class="amount">${o.amount} ₽</td>
+                        <td>${o.cardMasked}</td>
+                        <td>${o.email}</td>
+                        <td><span class="badge badge-paid">Оплачен</span></td>
+                        <td>${new Date(o.createdAt).toLocaleString('ru-RU')}</td>
+                    </tr>
+                `).join('');
+            });
+        }
+
+        // Enter в поле пароля
+        document.getElementById('passwordInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') login();
+        });
+
+        // Проверка токена при загрузке
+        if (localStorage.getItem('admin_token')) {
+            showPanel();
+        }
+    </script>
+</body>
+</html>
